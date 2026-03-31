@@ -20,9 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X, ArrowUp } from "lucide-react";
+import { Search, X, ArrowUp, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { CartQuantitySelector } from "@/components/cart-quantity-selector";
+import { getCartTotal } from "@/lib/cart";
 
 interface Product {
   stacklineSku: string;
@@ -30,6 +32,7 @@ interface Product {
   categoryName: string;
   subCategoryName: string;
   imageUrls: string[];
+  retailPrice: number; // Product price
 }
 
 function HomeContent() {
@@ -54,6 +57,8 @@ function HomeContent() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [paramsLoaded, setParamsLoaded] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  // Cart badge counter for header
+  const [cartTotal, setCartTotal] = useState(0);
 
   // show back to top button when scrolled
   useEffect(() => {
@@ -62,6 +67,20 @@ function HomeContent() {
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Update cart total when storage changes
+  useEffect(() => {
+    // Initial load
+    setCartTotal(getCartTotal());
+
+    // Listen for storage changes (cart updates from other components)
+    const handleStorageChange = () => {
+      setCartTotal(getCartTotal());
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const scrollToTop = () => {
@@ -258,7 +277,24 @@ function HomeContent() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white shadow-sm">
         <div className="container mx-auto px-4 py-6">
-          <h1 className="text-4xl font-bold mb-6">StackShop</h1>
+          <div className="flex justify-between items-start mb-6">
+            <h1 className="text-4xl font-bold">StackShop</h1>
+            {/* Cart Button with Badge */}
+            <Link href="/cart">
+              <Button
+                variant="outline"
+                className="relative h-10 w-10 p-0 rounded-full hover:bg-primary/10 hover:text-primary transition-colors"
+                aria-label={`Cart with ${cartTotal} ${cartTotal === 1 ? 'item' : 'items'}`}
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {cartTotal > 0 && (
+                  <span className="absolute -top-2 -right-2 h-5 w-5 bg-red-500 text-white rounded-full text-xs font-bold flex items-center justify-center">
+                    {cartTotal > 99 ? '99+' : cartTotal}
+                  </span>
+                )}
+              </Button>
+            </Link>
+          </div>
 
           <div className="flex flex-col md:flex-row gap-4 mb-4">
             <div className="relative flex-1">
@@ -460,26 +496,26 @@ function HomeContent() {
                     <CardTitle className="text-base line-clamp-2 mb-2">
                       {product.title}
                     </CardTitle>
-                    <CardDescription className="flex gap-2 flex-wrap">
+                    <CardDescription className="flex gap-2 flex-wrap mb-3">
                       <Badge variant="secondary">{product.categoryName}</Badge>
                       <Badge variant="outline">{product.subCategoryName}</Badge>
                     </CardDescription>
+                    {/* Price Display */}
+                    <div className="text-lg font-bold text-primary">
+                      ${product.retailPrice.toFixed(2)}
+                    </div>
                   </CardContent>
-                  <CardFooter>
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="w-full"
-                    >
-                      <Link
-                        href={{
-                          pathname: "/product",
-                          query: { sku: product.stacklineSku },
-                        }}
-                      >
-                        View Details
-                      </Link>
-                    </Button>
+                  <CardFooter className="p-4">
+                    {/* Cart Quantity Selector - only handles cart operations */}
+                    <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <CartQuantitySelector
+                      stacklineSku={product.stacklineSku}
+                      title={product.title}
+                      imageUrl={product.imageUrls[0] || '/placeholder.png'}
+                      price={product.retailPrice}
+                      variant="full-width"
+                    />
+                    </div>
                   </CardFooter>
                 </Card>
               ))}

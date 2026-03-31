@@ -6,9 +6,12 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Star } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { CartQuantitySelector } from '@/components/cart-quantity-selector';
+import { getCartTotal } from '@/lib/cart';
+import { getProductRecommendations, getRecommendationReason } from '@/lib/recommendations';
 
 interface Product {
   stacklineSku: string;
@@ -18,6 +21,7 @@ interface Product {
   imageUrls: string[];
   featureBullets: string[];
   retailerSku: string;
+  retailPrice: number; // Product price
 }
 
 function ProductContent() {
@@ -28,13 +32,13 @@ function ProductContent() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+  // Cart badge counter for header
+  const [cartTotal, setCartTotal] = useState(0);
+  // Recommended products
+  const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
 
   const handleBack = () => {
     window.history.back();
-  };
-
-  const handleAddToCart = () => {
-    alert('Product added to cart! (This is a demo - cart functionality coming soon)');
   };
 
   // update page title based on product state
@@ -47,6 +51,20 @@ function ProductContent() {
       document.title = `${product.title} | StackShop`;
     }
   }, [loading, product]);
+
+  // Update cart total when storage changes
+  useEffect(() => {
+    // Initial load
+    setCartTotal(getCartTotal());
+
+    // Listen for storage changes (cart updates from other components)
+    const handleStorageChange = () => {
+      setCartTotal(getCartTotal());
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   useEffect(() => {
     // we used to pass the entire product object via the query string which made
@@ -84,6 +102,14 @@ function ProductContent() {
     }
   }, [skuParam, productParam]);
 
+  // Load recommendations when product is loaded
+  useEffect(() => {
+    if (product && !loading) {
+      const recommendations = getProductRecommendations(product.stacklineSku, 5);
+      setRecommendedProducts(recommendations);
+    }
+  }, [product, loading]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -114,6 +140,27 @@ function ProductContent() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header with cart button */}
+      <header className="border-b bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <h1 className="text-2xl font-bold">StackShop</h1>
+          <Link href="/cart">
+            <Button
+              variant="outline"
+              className="relative h-10 w-10 p-0 rounded-full hover:bg-primary/10 hover:text-primary transition-colors"
+              aria-label={`Cart with ${cartTotal} ${cartTotal === 1 ? 'item' : 'items'}`}
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {cartTotal > 0 && (
+                <span className="absolute -top-2 -right-2 h-5 w-5 bg-red-500 text-white rounded-full text-xs font-bold flex items-center justify-center">
+                  {cartTotal > 99 ? '99+' : cartTotal}
+                </span>
+              )}
+            </Button>
+          </Link>
+        </div>
+      </header>
+
       <div className="container mx-auto px-4 py-8">
         {/* breadcrumb navigation */}
         <nav className="flex items-center gap-2 mb-6 text-sm text-muted-foreground">
@@ -201,7 +248,11 @@ function ProductContent() {
                 <Badge variant="outline">{product.subCategoryName}</Badge>
               </div>
               <h1 className="text-3xl font-bold mb-2">{product.title}</h1>
-              <p className="text-sm text-muted-foreground">SKU: {product.retailerSku}</p>
+              <p className="text-sm text-muted-foreground mb-3">SKU: {product.retailerSku}</p>
+              {/* Price Display */}
+              <div className="text-2xl font-bold text-primary">
+                ${product.retailPrice.toFixed(2)}
+              </div>
             </div>
 
             {product.featureBullets.length > 0 && (
@@ -220,12 +271,14 @@ function ProductContent() {
               </Card>
             )}
 
-            <Button
-              onClick={handleAddToCart}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-11 text-base font-semibold"
-            >
-              Add to Cart
-            </Button>
+            {/* Cart Quantity Selector - replaces "Add to Cart" button */}
+            <CartQuantitySelector
+              stacklineSku={product.stacklineSku}
+              title={product.title}
+              imageUrl={product.imageUrls[0] || '/placeholder.png'}
+              price={product.retailPrice}
+              variant="full-width"
+            />
           </div>
         </div>
 
@@ -237,6 +290,98 @@ function ProductContent() {
             </Link>
           </Button>
         </div>
+
+        {/* Recommendations Section */}
+        {recommendedProducts.length > 0 && (
+          <div className="mt-12 pt-8 border-t">
+            <h2 className="text-2xl font-bold mb-2">You might also like</h2>
+            <p className="text-muted-foreground mb-6">
+              Recommended products based on what you're viewing
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {recommendedProducts.map((rec) => (
+                <Card
+                  key={rec.stacklineSku}
+                  className="h-full flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group"
+                  onClick={() => {
+                    router.push(
+                      `/product?sku=${encodeURIComponent(rec.stacklineSku)}`
+                    );
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      router.push(
+                        `/product?sku=${encodeURIComponent(rec.stacklineSku)}`
+                      );
+                    }
+                  }}
+                >
+                  {/* Product Image */}
+                  <div className="relative h-40 w-full overflow-hidden rounded-t-lg bg-muted">
+                    {rec.imageUrls[0] && (
+                      <Image
+                        src={rec.imageUrls[0]}
+                        alt={rec.title}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-200"
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 20vw"
+                      />
+                    )}
+                    {/* Recommendation Badge */}
+                    <div className="absolute top-2 right-2">
+                      <Badge className="bg-blue-500 hover:bg-blue-600 flex items-center gap-1">
+                        <Star className="h-3 w-3" />
+                        Recommended
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <CardContent className="pt-4 flex-1">
+                    {/* Product Title */}
+                    <h3 className="text-sm font-semibold line-clamp-2 mb-2 group-hover:text-primary transition-colors">
+                      {rec.title}
+                    </h3>
+
+                    {/* Category Badge */}
+                    <Badge variant="outline" className="text-xs mb-3">
+                      {rec.subCategoryName}
+                    </Badge>
+
+                    {/* Price */}
+                    <div className="text-lg font-bold text-primary">
+                      ${rec.retailPrice.toFixed(2)}
+                    </div>
+                  </CardContent>
+
+                  {/* Quick View Button */}
+                  <div
+                    className="p-4"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <Button
+                      variant="outline"
+                      className="w-full text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(
+                          `/product?sku=${encodeURIComponent(rec.stacklineSku)}`
+                        );
+                      }}
+                    >
+                      View Product
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
